@@ -44,10 +44,7 @@ Note: There is no need to use the prepare.glmnet() function from lab 4, using as
 ```{r}
 # Read dataset into R
 wdbc <- fread("assignment2/wdbc2.csv")
-head(wdbc, 5)
-```
 
-```{r}
 # convert strings in 'diagnosis' to numeric
 wdbc$diagnosis <- ifelse(wdbc$diagnosis == 'malignant', 1, 0)
 
@@ -64,9 +61,12 @@ test.wbdc <- wdbc[-train.idx, -c(1)]
 # fit a Ridge regression and a Lasso regression using CV on training set
 # first, we need matrices for x and y in the regression function
 train.x <- train.wdbc[, -c(1)]
+test.x <- test.wbdc[, -c(1)]
 train.x.mat <- as.matrix(train.x)
-# convert strings in 'diagnosis' to numeric
+test.x.mat <- as.matrix(test.x)
+
 train.y.mat <- train.wdbc$diagnosis
+test.y.mat <- test.wbdc$diagnosis
 
 # now we fit regressions using CV
 set.seed(984065)
@@ -221,22 +221,22 @@ Use the four models to predict the outcome for the observations in the test set 
 
 ```{r}
 # predict values of testing set
-pred.Lasso.test <- predict(fit.cv.lasso, newx = as.matrix(test.wbdc[, -c(1)]), 
+pred.Lasso.test <- predict(fit.cv.lasso, newx = test.x.mat, 
                       s = fit.cv.lasso$lambda.1se, type = "response")
-pred.Ridge.test <- predict(fit.cv.ridge, newx = as.matrix(test.wbdc[, -c(1)]), 
+pred.Ridge.test <- predict(fit.cv.ridge, newx = test.x.mat, 
                       s = fit.cv.ridge$lambda.1se, type = "response")
-pred.B.test <- predict(model.B, newdata = test.wbdc[, -c(1)], type = "response")
-pred.S.test <- predict(model.S, newdata = test.wbdc[, -c(1)], type = "response")
+pred.B.test <- predict(model.B, newdata = test.x, type = "response")
+pred.S.test <- predict(model.S, newdata = test.x, type = "response")
 
 # plot ROC curves of four models
-roc.Lasso <- roc(test.wbdc$diagnosis, pred.Lasso.test, 
+roc.Lasso <- roc(test.y.mat, pred.Lasso.test, 
                  plot = TRUE, col = "blue", xlim = c(0, 1), 
                  main = "ROC curves (on testing data)")
-roc.Ridge <- roc(test.wbdc$diagnosis, pred.Ridge.test, 
+roc.Ridge <- roc(test.y.mat, pred.Ridge.test, 
                  plot = TRUE, col = "red", add = TRUE, xlim = c(0, 1))
-roc.B <- roc(test.wbdc$diagnosis, pred.B.test, 
+roc.B <- roc(test.y.mat, pred.B.test, 
                  plot = TRUE, col = "green", add = TRUE, xlim = c(0, 1))
-roc.S <- roc(test.wbdc$diagnosis, pred.S.test, 
+roc.S <- roc(test.y.mat, pred.S.test, 
                  plot = TRUE, col = "orange",add = TRUE,  xlim = c(0, 1))
 
 # add legend
@@ -254,8 +254,6 @@ data.frame(train.AUC = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3),
 
 ```
 
-
-
 ## Problem 2 (40 points)
 
 File GDM.raw.txt (available from the accompanying zip folder on Learn) contains 176 SNPs to be studied for association with incidence of gestational diabetes (a form of diabetes that is specific to pregnant women). SNP names are given in the form “rs1234_X” where “rs1234” is the official identifier (rsID), and “X” (one of A, C, G, T) is the reference allele.
@@ -270,16 +268,65 @@ Read file GDM.raw.txt into a data table named gdm.dt. Impute missing values in g
 ```{r}
 # read data into R
 gdm.dt <- data.table(read.table("assignment2/GDM.raw.txt", header = TRUE))
-head(gdm.dt, 5)
 ```
 
+```{r}
+# define a function to impute missing values in each column with median
+impute.to.median <- function(x){
+  na.idx <- is.na(x)
+  x[na.idx] <- median(x, na.rm = TRUE)
+  return(x)
+}
+
+# impute the missing values using the function
+gdm.dt.imputed <- gdm.dt[, (colnames(gdm.dt)) := lapply(.SD, impute.to.median), 
+                         .SDcols = colnames(gdm.dt)]
+
+```
 
 ### Problem 2.b (8 points)
 
 Write function univ.glm.test <- function(x, y, order = FALSE) where x is a data table of SNPs, y is a binary outcome vector, and order is a boolean. The function should fit a logistic regression model for each SNP in x, and return a data table containing SNP names, regression coefficients, odds ratios, standard errors and p-values. If order is set to TRUE, the output data table should be ordered by increasing p-value.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+univ.glm.test <- function(x, y, order = FALSE){
+  # initialize lists for output
+  name <- NULL
+  coef <- NULL
+  OR <- NULL
+  se <- NULL
+  p.value <- NULL
+  
+  # for convenience, we convert x to data frame
+  x <- as.data.frame(x)
+  
+  # get the names of columns in x
+  x.cols <- colnames(x)
+  
+  # logistic regression for each SNP in x
+  for (i in 1:length(x.cols)){
+    logreg <- glm(y ~ x[, i], family = "binomial")
+    reg.sum <- summary(logreg)
+    name[i] <- x.cols[i]
+    coef[i] <- reg.sum$coefficients[2, 1]
+    OR[i] <- exp(coef[i])
+    se[i] <- reg.sum$coefficients[2, 2]
+    p.value[i] <- reg.sum$coefficients[2, 4]
+  }
+  
+  # create a data table including the values
+  dt <- data.table(name, coef, OR, se, p.value)  
+  
+  # if order = TRUE ...
+  if (order == TRUE){
+    return(setorder(dt, p.value))
+  }
+  else{
+    return(dt)
+  }
+}
 ```
 
 
