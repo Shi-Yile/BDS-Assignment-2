@@ -1,5 +1,6 @@
 ---
 title: "Assignment 2"
+author: "Yile Shi (s2168022)"
 output:
   pdf_document: default
   html_document: default
@@ -7,6 +8,11 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+Sys.setlocale("LC_ALL", "UK")
+library(data.table)
+library(caret)
+library(glmnet)
+library(pROC)
 ```
 
 # Assignment 2
@@ -30,11 +36,53 @@ File wdbc2.csv (available from the accompanying zip folder on Learn) refers to a
 Using package caret, create a data partition so that the training set contains 70% of the observations (set the random seed to 984065 beforehand). Fit both a ridge regression model and a lasso model which uses cross-validation on the training set to diagnose the type of tumour from the 30 biomarkers. Then use a plot to help identify the penalty parameter $\lambda$ that maximizes the AUC.
 Note: There is no need to use the prepare.glmnet() function from lab 4, using as.matrix() with the required columns is sufficient.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# Read dataset into R
+wdbc <- fread("assignment2/wdbc2.csv")
+head(wdbc, 5)
 ```
 
+```{r}
+# convert strings in 'diagnosis' to numeric
+wdbc$diagnosis <- ifelse(wdbc$diagnosis == 'malignant', 1, 0)
 
+# set random seed beforehand
+set.seed(984065)
+
+# create training and testing sets
+train.idx <- createDataPartition(y = wdbc$diagnosis, p = 0.7)$Resample1
+train.wdbc <- wdbc[train.idx, -c(1)]
+test.wbdc <- wdbc[-train.idx, -c(1)]
+```
+
+```{r}
+# fit a Ridge regression and a Lasso regression using CV on training set
+# first, we need matrices for x and y in the regression function
+train.x.mat <- as.matrix(train.wdbc[, -c(1)])
+# convert strings in 'diagnosis' to numeric
+train.y.mat <- train.wdbc$diagnosis
+
+# now we fit regressions using CV
+set.seed(984065)
+fit.cv.lasso <- cv.glmnet(train.x.mat, train.y.mat, 
+                          family = "binomial", type.measure = "auc")
+fit.cv.ridge <- cv.glmnet(train.x.mat, train.y.mat, alpha=0, 
+                          family = "binomial", type.measure = "auc")
+```
+
+```{r}
+# make plots to find the best lambdas that maximise the AUC
+par(mfrow=c(1,2), mar=c(4,4,5,2))
+plot(fit.cv.lasso, main="Lasso")
+plot(fit.cv.ridge, main="Ridge")
+```
+```{r}
+# the values of best lambdas  
+cat("The best lambda in Lasso regression: ", fit.cv.lasso$lambda.min, "\n")
+cat("The best lambda in Ridge regression: ", fit.cv.ridge$lambda.min)
+```
 
 ### Problem 1.b (2 points)
 
@@ -43,8 +91,22 @@ Create a data table that for each value of 'lambda.min' and 'lambda.1se' for eac
 * the corresponding model size. 
 Use 3 significant digits for floating point values and comment on these results. Hint: The AUC values are stored in the field called 'cvm'. 
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# now we create the required data table
+rep.dt <- data.table(model = c("Lasso", "Ridge"),
+                     lambda.min = c(round(fit.cv.lasso$lambda.min, 3), 
+                                    round(fit.cv.ridge$lambda.min, 3)),
+                     AUC.lambda.min = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[1]], 3),
+                                        round(fit.cv.ridge$cvm[fit.cv.ridge$index[1]], 3)),
+                    
+                     lambda.1se = c(round(fit.cv.lasso$lambda.1se, 3),
+                                    round(fit.cv.ridge$lambda.1se, 3)),
+                     AUC.lambda.1se = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3),
+                                        round(fit.cv.ridge$cvm[fit.cv.ridge$index[2]], 3)),
+                     keep.rownames = TRUE)
+rep.dt
 ```
 
 
@@ -52,8 +114,35 @@ Use 3 significant digits for floating point values and comment on these results.
 
 Perform both backward (we’ll later refer to this as model B) and forward (model S) stepwise selection on the same training set derived in problem 1.a. Report the variables selected and their standardized regression coefficients in decreasing order of the absolute value of their standardized regression coefficient. Discuss the results and how the different variables entering or leaving the model influenced the final result. 
 
+### Solution:
+
+```{r, warning = FALSE}
+# define the full model and null model
+full.model <- glm(diagnosis ~ ., data = train.wdbc, family = "binomial")
+null.model <- glm(diagnosis ~ 1, data = train.wdbc, family = "binomial")
+```
+
+```{r, include = FALSE}
+# backward stepwise selection
+model.B <- stepAIC(full.model, scope = list(lower = null.model), 
+                   direction = "backward")
+
+# forward stepwise selection
+model.S <- stepAIC(null.model, scope = list(upper = full.model), 
+                   direction = "forward")
+```
+
 ```{r}
-# Enter code here.
+# selected variables with standardized regression coefficients in model.B
+cat("selected variables in model.B: ")
+data.frame(abs.coef = sort(abs(scale(model.B$coefficients))[,1], 
+                           decreasing = TRUE))
+```
+```{r}
+# selected variables with standardized regression coefficients in model.S
+cat("selected variables in model.S: ")
+data.frame(abs.coef = sort(abs(scale(model.S$coefficients))[,1], 
+                           decreasing = TRUE))
 ```
 
 
@@ -61,8 +150,21 @@ Perform both backward (we’ll later refer to this as model B) and forward (mode
 
 Compare the goodness of fit of model B and model S in an appropriate way.
 
+### Solution:
+
+We use the deviance of the model to test the goodness-of-fit of the model by deriving a p-value.
+
 ```{r}
-# Enter code here.
+# model.B
+signif(pchisq(model.B$null.deviance - model.B$deviance, 
+              df = model.B$df.null - model.B$df.residual, 
+              lower.tail = FALSE), 2)
+```
+```{r}
+# model.S
+signif(pchisq(model.S$null.deviance - model.S$deviance, 
+              df = model.S$df.null - model.S$df.residual, 
+              lower.tail = FALSE), 2)
 ```
 
 
@@ -70,8 +172,20 @@ Compare the goodness of fit of model B and model S in an appropriate way.
 
 Compute the training AUC for model B and model S.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# predict values on training set 
+pred.B <- predict(model.B, newdata = train.wdbc, type = "response")
+pred.S <- predict(model.S, newdata = train.wdbc, type = "response")
+```
+
+```{r}
+# auc
+auc.B <- roc(train.y.mat ~ pred.B)$auc
+auc.S <- roc(train.y.mat ~ pred.S)$auc
+cat("AUC of Model.B: ", auc.B, "\n")
+cat("AUC of Model.S:, ", auc.S)
 ```
 
 
@@ -80,7 +194,33 @@ Compute the training AUC for model B and model S.
 Use the four models to predict the outcome for the observations in the test set (use the lambda at 1 standard error for the penalised models). Plot the ROC curves of these models (on the sameplot, using different colours) and report their test AUCs. Compare the training AUCs obtained in problems 1.b and 1.e with the test AUCs and discuss the fit of the different models.
 
 ```{r}
-# Enter code here.
+# predict values of testing set
+pred.Lasso.test <- predict(fit.cv.lasso, newx = as.matrix(test.wbdc[, -c(1)]), 
+                      s = fit.cv.lasso$lambda.1se, type = "response")
+pred.Ridge.test <- predict(fit.cv.ridge, newx = as.matrix(test.wbdc[, -c(1)]), 
+                      s = fit.cv.ridge$lambda.1se, type = "response")
+pred.B.test <- predict(model.B, newdata = test.wbdc[, -c(1)], type = "response")
+pred.S.test <- predict(model.S, newdata = test.wbdc[, -c(1)], type = "response")
+
+# plot ROC curves of four models
+roc.Lasso <- roc(test.wbdc$diagnosis, pred.Lasso.test, 
+                 plot = TRUE, col = "blue", xlim = c(0, 1), main = "ROC curves")
+roc.Ridge <- roc(test.wbdc$diagnosis, pred.Ridge.test, 
+                 plot = TRUE, col = "red", add = TRUE, xlim = c(0, 1))
+roc.B <- roc(test.wbdc$diagnosis, pred.B.test, 
+                 plot = TRUE, col = "green", add = TRUE, xlim = c(0, 1))
+roc.S <- roc(test.wbdc$diagnosis, pred.S.test, 
+                 plot = TRUE, col = "orange",add = TRUE,  xlim = c(0, 1))
+
+# add legend
+legend("bottomleft", legend = c("Lasso", "Ridge", "Backward", "Forward"),
+       col = c("blue", "red", "green", "orange"), 
+       lty = c(1, 1, 1, 1), bty = "n")
+
+# create a data frame to show the AUC of each model
+data.frame(AUC = c(roc.Lasso$auc, roc.Ridge$auc, roc.B$auc, roc.S$auc), 
+           row.names = c("Lasso", "Ridge", "Backward", "Forward"))
+
 ```
 
 
