@@ -9,9 +9,12 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 Sys.setlocale("LC_ALL", "UK")
+library(tidyverse)
 library(data.table)
 library(caret)
 library(glmnet)
+library(MASS)
+library(lm.beta)
 library(pROC)
 ```
 
@@ -60,7 +63,8 @@ test.wbdc <- wdbc[-train.idx, -c(1)]
 ```{r}
 # fit a Ridge regression and a Lasso regression using CV on training set
 # first, we need matrices for x and y in the regression function
-train.x.mat <- as.matrix(train.wdbc[, -c(1)])
+train.x <- train.wdbc[, -c(1)]
+train.x.mat <- as.matrix(train.x)
 # convert strings in 'diagnosis' to numeric
 train.y.mat <- train.wdbc$diagnosis
 
@@ -74,9 +78,9 @@ fit.cv.ridge <- cv.glmnet(train.x.mat, train.y.mat, alpha=0,
 
 ```{r}
 # make plots to find the best lambdas that maximise the AUC
-par(mfrow=c(1,2), mar=c(4,4,5,2))
-plot(fit.cv.lasso, main="Lasso")
-plot(fit.cv.ridge, main="Ridge")
+par(mfrow = c(1,2), mar = c(4,4,5,2))
+plot(fit.cv.lasso, main = "Lasso")
+plot(fit.cv.ridge, main = "Ridge")
 ```
 ```{r}
 # the values of best lambdas  
@@ -95,17 +99,20 @@ Use 3 significant digits for floating point values and comment on these results.
 
 ```{r}
 # now we create the required data table
-rep.dt <- data.table(model = c("Lasso", "Ridge"),
-                     lambda.min = c(round(fit.cv.lasso$lambda.min, 3), 
-                                    round(fit.cv.ridge$lambda.min, 3)),
-                     AUC.lambda.min = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[1]], 3),
-                                        round(fit.cv.ridge$cvm[fit.cv.ridge$index[1]], 3)),
-                    
-                     lambda.1se = c(round(fit.cv.lasso$lambda.1se, 3),
-                                    round(fit.cv.ridge$lambda.1se, 3)),
-                     AUC.lambda.1se = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3),
-                                        round(fit.cv.ridge$cvm[fit.cv.ridge$index[2]], 3)),
-                     keep.rownames = TRUE)
+rep.dt <- data.table(model = c("Lasso(lambda.min)", "Lasso(lambda.1se)", 
+                               "Ridge(lambda.min)", "Ridge(lambda.1se)"),
+                     lambda = c(round(fit.cv.lasso$lambda.min, 3), 
+                                round(fit.cv.lasso$lambda.1se, 3),
+                                round(fit.cv.ridge$lambda.min, 3),
+                                round(fit.cv.ridge$lambda.1se, 3)),
+                     AUC = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[1]], 3),
+                             round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3),
+                             round(fit.cv.ridge$cvm[fit.cv.ridge$index[1]], 3),
+                             round(fit.cv.ridge$cvm[fit.cv.ridge$index[2]], 3)),
+                     modelsize = c(round(fit.cv.lasso$nzero[fit.cv.lasso$index[1]], 3),
+                                   round(fit.cv.lasso$nzero[fit.cv.lasso$index[2]], 3),
+                                   round(fit.cv.ridge$nzero[fit.cv.ridge$index[1]], 3),
+                                   round(fit.cv.ridge$nzero[fit.cv.ridge$index[2]], 3)))
 rep.dt
 ```
 
@@ -122,27 +129,37 @@ full.model <- glm(diagnosis ~ ., data = train.wdbc, family = "binomial")
 null.model <- glm(diagnosis ~ 1, data = train.wdbc, family = "binomial")
 ```
 
-```{r, include = FALSE}
+```{r, warning = FALSE}
 # backward stepwise selection
 model.B <- stepAIC(full.model, scope = list(lower = null.model), 
-                   direction = "backward")
+                   direction = "back", trace = FALSE)
 
 # forward stepwise selection
 model.S <- stepAIC(null.model, scope = list(upper = full.model), 
-                   direction = "forward")
+                   direction = "forward", trace = FALSE)
 ```
 
 ```{r}
 # selected variables with standardized regression coefficients in model.B
-cat("selected variables in model.B: ")
-data.frame(abs.coef = sort(abs(scale(model.B$coefficients))[,1], 
-                           decreasing = TRUE))
+# get the standardized coefficients
+std.coef.B <- lm.beta(model.B)$standardized.coefficients
+
+# order the coefficients in decreasing order of their absolute values
+std.coef.B <- std.coef.B[order(abs(std.coef.B), decreasing = TRUE)]
+
+cat("selected variables in model.B: \n")
+round(std.coef.B, 3)
 ```
 ```{r}
 # selected variables with standardized regression coefficients in model.S
-cat("selected variables in model.S: ")
-data.frame(abs.coef = sort(abs(scale(model.S$coefficients))[,1], 
-                           decreasing = TRUE))
+# get the standardized coefficients
+std.coef.S <- lm.beta(model.S)$standardized.coefficients
+
+# order the coefficients in decreasing order of their absolute values
+std.coef.S <- std.coef.S[order(abs(std.coef.S), decreasing = TRUE)]
+
+cat("selected variables in model.S: \n")
+std.coef.S
 ```
 
 
@@ -152,19 +169,26 @@ Compare the goodness of fit of model B and model S in an appropriate way.
 
 ### Solution:
 
-We use the deviance of the model to test the goodness-of-fit of the model by deriving a p-value.
+Here we consider using AIC as an appropriate criterion to compare the goodness-of-fit to the training data of two models. 
+
+```{r}
+data.frame(model.B = round(model.B$aic, 3), 
+           model.S = round(model.S$aic, 3),
+           row.names = "AIC")
+```
+
 
 ```{r}
 # model.B
 signif(pchisq(model.B$null.deviance - model.B$deviance, 
               df = model.B$df.null - model.B$df.residual, 
-              lower.tail = FALSE), 2)
+              lower.tail = FALSE), 3)
 ```
 ```{r}
 # model.S
 signif(pchisq(model.S$null.deviance - model.S$deviance, 
               df = model.S$df.null - model.S$df.residual, 
-              lower.tail = FALSE), 2)
+              lower.tail = FALSE), 3)
 ```
 
 
@@ -184,14 +208,16 @@ pred.S <- predict(model.S, newdata = train.wdbc, type = "response")
 # auc
 auc.B <- roc(train.y.mat ~ pred.B)$auc
 auc.S <- roc(train.y.mat ~ pred.S)$auc
-cat("AUC of Model.B: ", auc.B, "\n")
-cat("AUC of Model.S:, ", auc.S)
+cat("AUC of Model.B: ", round(auc.B, 3), "\n")
+cat("AUC of Model.S: ", round(auc.S, 3))
 ```
 
 
 ### Problem 1.f (6 points)
 
 Use the four models to predict the outcome for the observations in the test set (use the lambda at 1 standard error for the penalised models). Plot the ROC curves of these models (on the sameplot, using different colours) and report their test AUCs. Compare the training AUCs obtained in problems 1.b and 1.e with the test AUCs and discuss the fit of the different models.
+
+### Solution:
 
 ```{r}
 # predict values of testing set
@@ -204,7 +230,8 @@ pred.S.test <- predict(model.S, newdata = test.wbdc[, -c(1)], type = "response")
 
 # plot ROC curves of four models
 roc.Lasso <- roc(test.wbdc$diagnosis, pred.Lasso.test, 
-                 plot = TRUE, col = "blue", xlim = c(0, 1), main = "ROC curves")
+                 plot = TRUE, col = "blue", xlim = c(0, 1), 
+                 main = "ROC curves (on testing data)")
 roc.Ridge <- roc(test.wbdc$diagnosis, pred.Ridge.test, 
                  plot = TRUE, col = "red", add = TRUE, xlim = c(0, 1))
 roc.B <- roc(test.wbdc$diagnosis, pred.B.test, 
@@ -217,8 +244,12 @@ legend("bottomleft", legend = c("Lasso", "Ridge", "Backward", "Forward"),
        col = c("blue", "red", "green", "orange"), 
        lty = c(1, 1, 1, 1), bty = "n")
 
-# create a data frame to show the AUC of each model
-data.frame(AUC = c(roc.Lasso$auc, roc.Ridge$auc, roc.B$auc, roc.S$auc), 
+# data frame to report the AUC of each model on both training and testing sets
+data.frame(train.AUC = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3), 
+                         round(fit.cv.ridge$cvm[fit.cv.ridge$index[2]], 3),
+                         round(auc.B, 3), round(auc.S, 3)),
+           test.AUC = c(round(roc.Lasso$auc, 3), round(roc.Ridge$auc, 3), 
+                        round(roc.B$auc, 3), round(roc.S$auc, 3)), 
            row.names = c("Lasso", "Ridge", "Backward", "Forward"))
 
 ```
@@ -234,8 +265,12 @@ File GDM.raw.txt (available from the accompanying zip folder on Learn) contains 
 
 Read file GDM.raw.txt into a data table named gdm.dt. Impute missing values in gdm.dt according to SNP-wise median allele count.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# read data into R
+gdm.dt <- data.table(read.table("assignment2/GDM.raw.txt", header = TRUE))
+head(gdm.dt, 5)
 ```
 
 
