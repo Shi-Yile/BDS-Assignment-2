@@ -1,6 +1,7 @@
 ---
-title: "Assignment 2"
+title: "Biomedical Data Science - Assignment 2"
 author: "Yile Shi (s2168022)"
+date: "2022/3/26"
 output:
   pdf_document: default
   html_document: default
@@ -16,6 +17,8 @@ library(glmnet)
 library(MASS)
 library(lm.beta)
 library(pROC)
+library(corrplot)
+library(factoextra)
 ```
 
 # Assignment 2
@@ -72,7 +75,7 @@ test.y.mat <- test.wbdc$diagnosis
 set.seed(984065)
 fit.cv.lasso <- cv.glmnet(train.x.mat, train.y.mat, 
                           family = "binomial", type.measure = "auc")
-fit.cv.ridge <- cv.glmnet(train.x.mat, train.y.mat, alpha=0, 
+fit.cv.ridge <- cv.glmnet(train.x.mat, train.y.mat, alpha = 0, 
                           family = "binomial", type.measure = "auc")
 ```
 
@@ -87,6 +90,8 @@ plot(fit.cv.ridge, main = "Ridge")
 cat("The best lambda in Lasso regression: ", fit.cv.lasso$lambda.min, "\n")
 cat("The best lambda in Ridge regression: ", fit.cv.ridge$lambda.min)
 ```
+
+\newpage
 
 ### Problem 1.b (2 points)
 
@@ -116,6 +121,7 @@ rep.dt <- data.table(model = c("Lasso(lambda.min)", "Lasso(lambda.1se)",
 rep.dt
 ```
 
+\newpage
 
 ### Problem 1.c (7 points)
 
@@ -162,6 +168,7 @@ cat("selected variables in model.S: \n")
 std.coef.S
 ```
 
+\newpage
 
 ### Problem 1.d (3 points)
 
@@ -191,6 +198,7 @@ signif(pchisq(model.S$null.deviance - model.S$deviance,
               lower.tail = FALSE), 3)
 ```
 
+\newpage
 
 ### Problem 1.e (2 points)
 
@@ -212,6 +220,7 @@ cat("AUC of Model.B: ", round(auc.B, 3), "\n")
 cat("AUC of Model.S: ", round(auc.S, 3))
 ```
 
+\newpage
 
 ### Problem 1.f (6 points)
 
@@ -221,18 +230,18 @@ Use the four models to predict the outcome for the observations in the test set 
 
 ```{r}
 # predict values of testing set
-pred.Lasso.test <- predict(fit.cv.lasso, newx = test.x.mat, 
+pred.lasso.test <- predict(fit.cv.lasso, newx = test.x.mat, 
                       s = fit.cv.lasso$lambda.1se, type = "response")
-pred.Ridge.test <- predict(fit.cv.ridge, newx = test.x.mat, 
+pred.ridge.test <- predict(fit.cv.ridge, newx = test.x.mat, 
                       s = fit.cv.ridge$lambda.1se, type = "response")
 pred.B.test <- predict(model.B, newdata = test.x, type = "response")
 pred.S.test <- predict(model.S, newdata = test.x, type = "response")
 
 # plot ROC curves of four models
-roc.Lasso <- roc(test.y.mat, pred.Lasso.test, 
+roc.lasso <- roc(test.y.mat, pred.lasso.test, 
                  plot = TRUE, col = "blue", xlim = c(0, 1), 
                  main = "ROC curves (on testing data)")
-roc.Ridge <- roc(test.y.mat, pred.Ridge.test, 
+roc.ridge <- roc(test.y.mat, pred.ridge.test, 
                  plot = TRUE, col = "red", add = TRUE, xlim = c(0, 1))
 roc.B <- roc(test.y.mat, pred.B.test, 
                  plot = TRUE, col = "green", add = TRUE, xlim = c(0, 1))
@@ -248,16 +257,17 @@ legend("bottomleft", legend = c("Lasso", "Ridge", "Backward", "Forward"),
 data.frame(train.AUC = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3), 
                          round(fit.cv.ridge$cvm[fit.cv.ridge$index[2]], 3),
                          round(auc.B, 3), round(auc.S, 3)),
-           test.AUC = c(round(roc.Lasso$auc, 3), round(roc.Ridge$auc, 3), 
+           test.AUC = c(round(roc.lasso$auc, 3), round(roc.ridge$auc, 3), 
                         round(roc.B$auc, 3), round(roc.S$auc, 3)), 
            row.names = c("Lasso", "Ridge", "Backward", "Forward"))
 
 ```
 
+\newpage
+
 ## Problem 2 (40 points)
 
 File GDM.raw.txt (available from the accompanying zip folder on Learn) contains 176 SNPs to be studied for association with incidence of gestational diabetes (a form of diabetes that is specific to pregnant women). SNP names are given in the form “rs1234_X” where “rs1234” is the official identifier (rsID), and “X” (one of A, C, G, T) is the reference allele.
-
 
 ### Problem 2.a (3 points)
 
@@ -282,7 +292,10 @@ impute.to.median <- function(x){
 gdm.dt.imputed <- gdm.dt[, (colnames(gdm.dt)) := lapply(.SD, impute.to.median), 
                          .SDcols = colnames(gdm.dt)]
 
+sum(is.na(gdm.dt.imputed))
 ```
+
+\newpage
 
 ### Problem 2.b (8 points)
 
@@ -329,42 +342,120 @@ univ.glm.test <- function(x, y, order = FALSE){
 }
 ```
 
+\newpage
 
 ### Problem 2.c (5 points)
 
 Using function univ.glm.test(), run an association study for all the SNPs in gdm.dt against having gestational diabetes (column “pheno”). For the SNP that is most strongly associated to increased risk of gestational diabetes and the one with most significant protective effect, report the summary statistics from the GWAS as well as the 95% and 99% confidence intervals on the odds ratio.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# Use pre-defined function on the imputed dataset
+# construct function input
+SNP.x <- gdm.dt.imputed[, -c(1, 2, 3)]
+gd.y <- gdm.dt.imputed$pheno
+res <- univ.glm.test(x = SNP.x, y = gd.y, order = TRUE)
+head(res, 5)
 ```
 
+```{r}
+#The SNP mostly strongly associated to increased risk of gestational diabetes is:
+SNP.msa <- res[1, ]
+print(SNP.msa)
+
+# The 95% and 99% confidence intervals of corresponding odds ratio are:
+CI.95.msa <- exp(SNP.msa$coef + qnorm(0.975) * SNP.msa$se * c(-1, 1))
+CI.99.msa <- exp(SNP.msa$coef + qnorm(0.995) * SNP.msa$se * c(-1, 1))
+data.frame(lower = c(round(CI.95.msa[1], 3), round(CI.99.msa[1], 3)),
+           upper = c(round(CI.95.msa[2], 3), round(CI.99.msa[2], 3)),
+           row.names = c("95%", "99%"))
+```
+
+```{r}
+#The SNP with most significant protective effect is:
+SNP.msp <- res[which.min(res$coef)]
+print(SNP.msp)
+
+# The 95% and 99% confidence intervals of corresponding odds ratio are:
+CI.95.msp <- exp(SNP.msp$coef + qnorm(0.975) * SNP.msp$se * c(-1, 1))
+CI.99.msp <- exp(SNP.msp$coef + qnorm(0.995) * SNP.msp$se * c(-1, 1))
+data.frame(lower = c(round(CI.95.msp[1], 3), round(CI.99.msp[1], 3)),
+           upper = c(round(CI.95.msp[2], 3), round(CI.99.msp[2], 3)),
+           row.names = c("95%", "99%"))
+```
+
+\newpage
 
 ### Problem 2.d (4points)
 
-Merge your GWAS results with the table of gene names provided in file GDM.annot.txt (available from the accompanying zip folder on Learn). For SNPs that have p-value $< 10^{-4}$ (hit SNPs) report SNP name, effect allele, chromosome number and corresponding gene name. Separately, report for each ‘hit SNP’ the names of the genes that are within a 1Mb window from the SNP position on the chromosome. Note: That’s genes that fall within +/- 1,000,000 positions using the ‘pos’ column in the dataset.
+Merge your GWAS results with the table of gene names provided in file GDM.annot.txt (available from the accompanying zip folder on Learn). For SNPs that have p-value $< 10^{-4}$ (hit SNPs) report SNP name, effect allele, chromosome number and corresponding gene name. Separately, report for each ‘hit SNP’ tahe names of the genes that are within a 1Mb window from the SNP position on the chromosome. Note: That’s genes that fall within +/- 1,000,000 positions using the ‘pos’ column in the dataset.
+
+### Solution:
 
 ```{r}
-# Enter code here.
+# read dataset into R
+gdm.annot.dt <- data.table(read.table("assignment2/GDM.annot.txt", 
+                                      sep = "\t", header = TRUE))
+
+# merge previous results with gene names in gdm.annot.dt
+# before merging, split 'name' in res to SNP names and effect allele
+res$snp <- sapply(res$name, function(x) strsplit(x, split = "_")[[1]][1]) 
+res$allele <- sapply(res$name, function(x) strsplit(x, split = "_")[[1]][2]) 
+
+# now merge the datasets by 'snp'
+res.merged <- merge(res, gdm.annot.dt, by = "snp")
 ```
 
+```{r}
+# find the hit SNPs and report
+hit.SNP <- res.merged[which(res.merged$p.value < 1e-4)]
+hit.SNP[, .(snp, allele, chrom, gene)]
+```
+```{r}
+# 1Mb window for 1st SNP in hit.SNP
+unique(res.merged[abs(res.merged$pos - hit.SNP$pos[1]) <= 10^6 
+                            & res.merged$pos != hit.SNP$pos[1], "gene"])
+
+# 1Mb window for 2nd SNP in hit.SNP
+unique(res.merged[abs(res.merged$pos - hit.SNP$pos[2]) <= 10^6 
+                        & res.merged$pos != hit.SNP$pos[2], "gene"])
+```
+
+\newpage
 
 ### Problem 2.e (8 points)
 
 Build a weighted genetic risk score that includes all SNPs with p-value $< 10^{-4}$, a score with all SNPs with p-value $< 10^{-3}$, and a score that only includes SNPs on the FTO gene (hint: ensure that the ordering of SNPs is respected). Add the three scores as columns to the gdm.dt data table. Fit the three scores in separate logistic regression models to test their association with gestational diabetes, and for each report odds ratio, 95% confidence interval and p-value.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# subset of SNPs with p-value < 1e-3
+p3.SNP <- res.merged[which(res.merged$p.value < 1e-3)]
+
+# subset of SNPs on the FTO gene
+FTO.SNP <- res.merged[which(res.merged$gene == 'FTO')]
 ```
 
+```{r}
+# weighted genetic risk score for SNPs in hit.SNP
+
+```
+
+
+\newpage
 
 ### Problem 2.f (4 points)
 
 File GDM.test.txt (available from the accompanying zip folder on Learn) contains genotypes of another 40 pregnant women with and without gestational diabetes (assume that the reference allele is the same one that was specified in file GDM.raw.txt). Read the file into variable gdm.test. For the set of patients in gdm.test, compute the three genetic risk scores as defined in problem 2.e using the same set of SNPs and corresponding weights. Add the three scores as columns to gdm.test (hint: use the same columnnames as before).
 
 ```{r}
-# Enter code here.
+# read data into R
+gdm.test <- read.table("assignment2/GDM.test.txt", header = TRUE)
 ```
 
+\newpage
 
 ### Problem 2.g (4 points)
 
@@ -374,15 +465,18 @@ Use the logistic regression models fitted in problem 2.e to predict the outcome 
 # Enter code here.
 ```
 
+\newpage
 
 ### Problem 2.h (4points)
 
 File GDM.study2.txt (available from the accompanying zip folder on Learn) contains the summary statistics from a different study on the same set of SNPs. Perform a meta-analysis with the results obtained in problem 2.c (hint: remember that the effect alleles should correspond) and produce a summary of the meta-analysis results for the set of SNPs with meta-analysis p-value $< 10^{-4}$ sorted by increasing p-value.
 
 ```{r}
-# Enter code here.
+# read data into R
+gdm.study2 <- read.table("assignment2/GDM.study2.txt", header = TRUE)
 ```
 
+\newpage
 
 ## Problem 3 (33 points)
 
@@ -393,35 +487,235 @@ File nki.csv (available from the accompanying zip folder on Learn) contains data
 
 Compute the matrix of correlations between the gene expression variables, and display it so that a block structure is highlighted. Discuss what you observe. Write some code to identify the unique pairs of (distinct) variables that have correlation coefficient greater than 0.80 in absolute value and report their correlation coefficients.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# read data into R
+nki <- read.csv("assignment2/nki.csv", header = TRUE)
 ```
 
+```{r}
+# subset of gene expression variables
+gene.expression <- nki[, -c(1 : 6)]
+
+# correlations matrix
+gene.expression.corr <- cor(gene.expression)
+
+# visualize the correlations using a heatmap
+corrplot(gene.expression.corr, order = "hclust", method = "color",
+         title = "Correlation Matrix of Gene Expression Variables",
+         tl.col = "black", tl.cex = 0.3, diag = FALSE, mar = c(0, 0, 1, 0))
+```
+```{r}
+# find the unique pairs of distinct variables with correlation > 0.8
+# initialize an empty data frame
+corr.08 <- data.frame()
+
+# loop to get pairs with correlation > 0.8 except identity pairs
+for (i in 2:ncol(gene.expression.corr)){
+  for (j in 1:(i-1)){
+    pair <- paste(rownames(gene.expression.corr)[i], 
+                  colnames(gene.expression.corr)[j], sep = ", ")
+    corr <- gene.expression.corr[i, j]
+    if (abs(corr) > 0.8){
+      df <- data.frame(pair = pair, correlation = corr)
+    corr.08 <- rbind(corr.08, df)
+    }
+  }
+}
+
+corr.08
+```
+
+\newpage
 
 ### Problem 3.b (8 points)
 
 Run PCA (only over the columns containing gene expressions), in order to derive a patient-wise summary of all gene expressions (dimensionality reduction). Decide which components to keep and justify your decision. Test if those principal components are associated with the outcome in unadjusted logistic regression models and in models adjusted for age, estrogen receptor and grade. Justify the difference in results between unadjusted and adjusted models.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# run PCA 
+pca.patients <- prcomp(gene.expression, center = TRUE, scale = TRUE)
+summary(pca.patients)
+```
+The amount of variability explained by the components can be computed bearing in mind that the square root of the eigenvalues is stored in vector `sdev` of the PCA object. The variance explained by the principal components can be visualized through a scree plot.
+```{r}
+# the proportion explained by the first 3 PCs
+perc.expl <- pca.patients$sdev^2 / sum(pca.patients$sdev^2)
+sum(perc.expl[1:3])
+
+# scree plot 
+screeplot(pca.patients, main = "Scree plot")
 ```
 
+```{r}
+# subset of the first 3 PCs
+pca.components <- pca.patients$x[, 1:3]
+
+# logistic regressions on each PC without adjustment on other variables
+fit.pc1 <- glm(nki$Event ~ pca.components[, 1], 
+               family = "binomial"(link = "logit"))
+
+fit.pc2 <- glm(nki$Event ~ pca.components[, 2], 
+               family = "binomial"(link = "logit"))
+
+fit.pc3 <- glm(nki$Event ~ pca.components[, 3], 
+               family = "binomial"(link = "logit"))
+
+# logistic regression on each PC with adjustments
+fit.pc1.adj <- glm(nki$Event ~ pca.components[, 1] 
+                   + nki$EstrogenReceptor + nki$Grade + nki$Age, 
+                   family = "binomial"(link = "logit"))
+
+fit.pc2.adj <- glm(nki$Event ~ pca.components[, 2] 
+                   + nki$EstrogenReceptor + nki$Grade + nki$Age, 
+                   family = "binomial"(link = "logit"))
+
+fit.pc3.adj <- glm(nki$Event ~ pca.components[, 3] 
+                   + nki$EstrogenReceptor + nki$Grade + nki$Age, 
+                   family = "binomial"(link = "logit"))
+```
+
+```{r}
+# regression coefficients and p-values in unadjusted and adjusted models
+# principal component 1
+data.frame(coef = c(fit.pc1$coefficients[2], fit.pc1.adj$coefficients[2]),
+           p.value = c(summary(fit.pc1)$coefficients[2, 4], 
+                       summary(fit.pc1.adj)$coefficients[2, 4]), 
+           row.names = c("unadjusted", "adjuested"))
+
+# principal component 2
+data.frame(coef = c(fit.pc2$coefficients[2], fit.pc2.adj$coefficients[2]),
+           p.value = c(summary(fit.pc2)$coefficients[2, 4], 
+                       summary(fit.pc2.adj)$coefficients[2, 4]), 
+           row.names = c("unadjusted", "adjuested"))
+
+# principal component 3
+data.frame(coef = c(fit.pc3$coefficients[2], fit.pc3.adj$coefficients[2]),
+           p.value = c(summary(fit.pc3)$coefficients[2, 4], 
+                       summary(fit.pc3.adj)$coefficients[2, 4]), 
+           row.names = c("unadjusted", "adjuested"))
+```
+
+```{r}
+fit.pca.adj <- glm(nki$Event ~ pca.components[, 1] + pca.components[, 2] 
+                   + pca.components[, 3] + nki$EstrogenReceptor 
+                   + nki$Grade + nki$Age, family = "binomial"(link = "logit"))
+summary(fit.pca.adj)
+```
+
+
+\newpage
 
 ### Problem 3.c (8 points)
 
 Use plots to compare with the correlation structure observed in problem 2.a and to examine how well the dataset may explain your outcome. Discuss your findings and suggest any further steps if needed. 
 
+### Solutions:
+
 ```{r}
-# Enter code here.
+# PC1 vs PC2
+fviz_pca_ind(pca.patients, geom = 'point', 
+             habillage = nki$Event, addEllipses = TRUE)
+fviz_pca_biplot(pca.patients, geom = 'point', repel = TRUE)
+
+# PC2 vs PC3
+fviz_pca_ind(pca.patients, geom = 'point', axes = c(2, 3),
+             habillage = nki$Event, addEllipses = TRUE)
+fviz_pca_biplot(pca.patients, geom = 'point', axes = c(2, 3), repel = TRUE)
+
+
 ```
 
+\newpage
 
 ### Problem 3.d (11 points)
 
 Based on the models we examined in the labs, fit an appropriate model with the aim to provide the most accurate prognosis you can for patients. Discuss and justify your decisions.
 
+### Solution:
+
 ```{r}
-# Enter code here.
+# helper function in Lab4
+prepare.glmnet <- function(data, formula=~ .) {
+                ## create the design matrix to deal correctly with factor variables,
+                ## without losing rows containing NAs
+                old.opts <- options(na.action='na.pass')
+                x <- model.matrix(formula, data)
+                options(old.opts)
+                
+                ## remove the intercept column, as glmnet will add one by default
+                x <- x[, -match("(Intercept)", colnames(x))]
+                return(x)
+}
 ```
+
+```{r}
+# define x and y
+x.mat <- prepare.glmnet(nki, ~ . - Event)
+y.mat <- nki$Event
+
+# create training and testing sets
+set.seed(984065)
+train.idx <- createDataPartition(y = nki$Event, p = 0.7)$Resample1
+train.x.mat <- x.mat[train.idx, ]
+test.x.mat <- x.mat[-train.idx, ]
+train.y.mat <- y.mat[train.idx]
+test.y.mat <- y.mat[-train.idx]
+```
+
+```{r, warning=FALSE}
+# Lasso regressions using CV
+fit.cv.Lasso <- cv.glmnet(train.x.mat, train.y.mat, 
+                          family = "binomial", type.measure = "auc")
+fit.cv.Lasso.gene <- cv.glmnet(train.x.mat[, -c(1:6)], train.y.mat,
+                               family = "binomial", type.measure = "auc")
+
+# AUCs with best lambda
+Lasso.auc <- fit.cv.Lasso$cvm[fit.cv.Lasso$index[1]]
+Lasso.gene.auc <- fit.cv.Lasso.gene$cvm[fit.cv.Lasso.gene$index[1]]
+```
+
+```{r, warning=FALSE}
+# Ridge regression using CV
+fit.cv.Ridge <- cv.glmnet(train.x.mat, train.y.mat, alpha = 0,
+                          family = "binomial", type.measure = "auc")
+fit.cv.Ridge.gene <- cv.glmnet(train.x.mat[, -c(1:6)], train.y.mat, alpha = 0,
+                               family = "binomial", type.measure = "auc")
+
+# AUCs with best lambda
+Ridge.auc <- fit.cv.Ridge$cvm[fit.cv.Ridge$index[1]]
+Ridge.gene.auc <- fit.cv.Ridge.gene$cvm[fit.cv.Ridge.gene$index[1]]
+```
+
+```{r, warning=FALSE}
+# AUCs of Lasso and Ridge regressions on testing set
+pred.Lasso.test <- predict(fit.cv.Lasso, newx = test.x.mat, 
+                           s = fit.cv.Lasso$lambda.min, type = "response")
+pred.Lasso.gene.test <- predict(fit.cv.Lasso.gene, newx = test.x.mat[, -c(1:6)], 
+                                s = fit.cv.Lasso$lambda.min, type = "response")
+pred.Ridge.test <- predict(fit.cv.Ridge, newx = test.x.mat, 
+                           s = fit.cv.Ridge$lambda.min, type = "response")
+pred.Ridge.gene.test <- predict(fit.cv.Ridge.gene, newx = test.x.mat[, -c(1:6)], 
+                                s = fit.cv.Ridge$lambda.min, type = "response")
+
+Lasso.test.auc <- roc(test.y.mat ~ pred.Lasso.test)$auc
+Lasso.gene.test.auc <- roc(test.y.mat ~ pred.Lasso.gene.test)$auc
+Ridge.test.auc <- roc(test.y.mat ~ pred.Ridge.test)$auc
+Ridge.test.gene.auc <- roc(test.y.mat ~ pred.Ridge.gene.test)$auc
+
+data.frame(train.AUC = c(Lasso.auc, Lasso.gene.auc, Ridge.auc, Ridge.gene.auc),
+           modelsize = c(fit.cv.Lasso$nzero[fit.cv.Lasso$index[1]],
+                         fit.cv.Lasso.gene$nzero[fit.cv.Lasso.gene$index[1]],
+                         fit.cv.Ridge$nzero[fit.cv.Ridge$index[1]], 
+                         fit.cv.Ridge.gene$nzero[fit.cv.Ridge.gene$index[1]]),
+           test.AUC = c(Lasso.test.auc, Lasso.gene.test.auc,
+                        Ridge.test.auc, Ridge.test.gene.auc), 
+           row.names = c("Lasso", "Lasso (gene only)", 
+                         "Ridge", "Ridge (gene only)"))
+```
+
 
 
