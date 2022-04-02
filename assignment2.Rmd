@@ -19,6 +19,7 @@ library(lm.beta)
 library(pROC)
 library(corrplot)
 library(factoextra)
+library(gridExtra)
 ```
 
 # Assignment 2
@@ -46,7 +47,7 @@ Note: There is no need to use the prepare.glmnet() function from lab 4, using as
 
 After reading the dataset into R, we find that response variable `diagnosis` consists of strings. Though `glmnet()` function can deal with strings in `diagnosis`, `glm()` function failed to fit regressions on the response variable with strings in 1.c. Therefore, before any further handling, we encoded  `diagnosis` with $0$ and $1$, where $0$ represents "malignant" and $1$ represents "benign". 
 
-We use package `caret` to create training and testing sets with a ratio of $7:3$. For model reproducibility and comparison, we set the random seed to $984065$ beforehand. Since `glmnet()` function requires matrix as input rather than data tables, we use `as.matrix()` function to transform data tables for $30$ biomarkers to matrices.
+We use package `caret` to create training and testing sets with a ratio of $7:3$. For model reproducibility and comparison, we set the random seed to $984065$ beforehand. Since `glmnet()` function requires matrices as its input, we use `as.matrix()` function to transform data tables for $30$ biomarkers to matrices.
 
 After data pre-processing, we fit a Ridge regression and a Lasso regression which use cross-validation on the training data. To identify the optimal penalty parameter which maximises the AUC for each model, for each model, we make an auxiliary plot which display the AUC in red with bars corresponding to standard errors. The leftmost dotted line in each plot corresponds to the $\lambda$ that maximises AUC, i.e. `lambda_min` in the regression object. The right dotted line corresponds to the largest value of $\lambda$ such that the error is within one standard error from the minimum, i.e. `lambda_1se` in the fitted object.
 
@@ -168,7 +169,7 @@ null.model <- glm(diagnosis ~ 1, data = train.wdbc, family = "binomial")
 ```{r, warning = FALSE}
 # backward stepwise selection
 model.B <- stepAIC(full.model, scope = list(lower = null.model), 
-                   direction = "back", trace = FALSE)
+                   direction = "backward", trace = FALSE)
 
 # forward stepwise selection
 model.S <- stepAIC(null.model, scope = list(upper = full.model), 
@@ -208,8 +209,18 @@ Compare the goodness of fit of model B and model S in an appropriate way.
 
 Here we consider using AIC as an appropriate criterion to compare the goodness-of-fit to the training data of two models. As mentioned before, in general, model with lower AIC value has better performance. Thus, according to the following result, we consider the backward stepwise selection, i.e. model.B, performs better than the forward stepwise method.
 
+We also apply $\chi^2$ test to both methods to compare their significance. 
+
 ```{r}
-data.frame(model.B = model.B$aic, model.S = model.S$aic, row.names = "AIC")
+data.frame(model.B = c(model.B$aic, 
+                       pchisq(model.B$null.deviance - model.B$deviance, 
+                              df = model.B$df.null - model.B$df.residual, 
+                              lower.tail = FALSE)),
+           model.S = c(model.S$aic,
+                       pchisq(model.S$null.deviance - model.S$deviance, 
+                              df = model.S$df.null - model.S$df.residual, 
+                              lower.tail = FALSE)),
+           row.names = c("AIC", "chisq test"))
 ```
 
 \newpage
@@ -220,18 +231,24 @@ Compute the training AUC for model B and model S.
 
 ### Solution:
 
-To compute the training AUC for two stepwise models, we first obtain the predictive values of training set using model.B and model.S. With predictive values, we use `roc()` function from `pROC` package to calculate AUC of training set for model.B and model.S. From the result, we can find that the AUC scores for both models are quite high and backward stepwise selection performs slightly better than forward stepwise method, which is consistent with the conclusion from previous question. 
+To compute the training AUC for two stepwise models, we first obtain the predictive values of training set using model.B and model.S. With predictive values, we use `roc()` function from `pROC` package to calculate AUC of training set for model.B and model.S. 
 
-```{r}
+From the result, we can find that the AUC scores for both models are quite high and backward stepwise selection performs slightly better than forward stepwise method, which is consistent with the conclusion from previous question. 
+
+```{r, warning = FALSE, error = FALSE, message = FALSE, fig.height = 3.5}
 # predict values on training set 
 pred.B <- predict(model.B, newdata = train.wdbc, type = "response")
 pred.S <- predict(model.S, newdata = train.wdbc, type = "response")
-```
 
-```{r}
 # auc
-auc.B <- roc(train.y.mat ~ pred.B)$auc
-auc.S <- roc(train.y.mat ~ pred.S)$auc
+invisible({capture.output({
+auc.B <- roc(train.y.mat ~ pred.B, plot = TRUE, 
+             main = "ROC curves (on training set)", 
+             col = "red", xlim = c(0, 1))$auc
+auc.S <- roc(train.y.mat ~ pred.S, plot = TRUE, add = TRUE, col = "blue")$auc
+legend("bottomleft", legend = c("Backward", "Forward"), 
+       col = c("red", "blue"), lwd = c(1, 1), bty = "n")
+})})
 data.frame(model = c("model.B", "model.S"), AUC = c(auc.B, auc.S))
 ```
 
@@ -247,7 +264,7 @@ Similar with 1.e, to get the testing AUC of each model, we need to calculate the
 
 According to the results, Lasso regression has higher testing AUC than its training AUC, while the other $3$ models has higher training AUCs than their testing AUCs. Moreover, basically stepwise models performs better on training set,  while penalised models have better performances on testing model. Note that we may not consider the problem of over-fitting for penalised models as the idea of regularization reduces over-fitting. However, we possibly consider over-fitting happens to stepwise models.
 
-```{r}
+```{r, , warning = FALSE, error = FALSE, message = FALSE, fig.height = 3.5}
 # predict values of testing set
 pred.lasso.test <- predict(fit.cv.lasso, newx = test.x.mat, 
                       s = fit.cv.lasso$lambda.1se, type = "response")
@@ -257,6 +274,7 @@ pred.B.test <- predict(model.B, newdata = test.x, type = "response")
 pred.S.test <- predict(model.S, newdata = test.x, type = "response")
 
 # plot ROC curves of four models
+invisible({capture.output({
 roc.lasso <- roc(test.y.mat, pred.lasso.test, 
                  plot = TRUE, col = "blue", xlim = c(0, 1), 
                  main = "ROC curves (on testing data)")
@@ -266,6 +284,7 @@ roc.B <- roc(test.y.mat, pred.B.test,
                  plot = TRUE, col = "green", add = TRUE, xlim = c(0, 1))
 roc.S <- roc(test.y.mat, pred.S.test, 
                  plot = TRUE, col = "orange",add = TRUE,  xlim = c(0, 1))
+})})
 
 # add legend
 legend("bottomleft", legend = c("Lasso", "Ridge", "Backward", "Forward"),
@@ -273,11 +292,11 @@ legend("bottomleft", legend = c("Lasso", "Ridge", "Backward", "Forward"),
        lty = c(1, 1, 1, 1), bty = "n")
 
 # data frame to report the AUC of each model on both training and testing sets
-data.frame(train.AUC = c(round(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 3), 
-                         round(fit.cv.ridge$cvm[fit.cv.ridge$index[2]], 3),
-                         round(auc.B, 3), round(auc.S, 3)),
-           test.AUC = c(round(roc.lasso$auc, 3), round(roc.ridge$auc, 3), 
-                        round(roc.B$auc, 3), round(roc.S$auc, 3)), 
+data.frame(train.AUC = c(fit.cv.lasso$cvm[fit.cv.lasso$index[2]], 
+                         fit.cv.ridge$cvm[fit.cv.ridge$index[2]],
+                         auc.B, auc.S),
+           test.AUC = c(roc.lasso$auc, roc.ridge$auc, 
+                        roc.B$auc, roc.S$auc), 
            row.names = c("Lasso", "Ridge", "Backward", "Forward"))
 
 ```
@@ -443,12 +462,13 @@ rep.hit.SNP[, .(snp, allele, chrom, gene)]
 
 ```{r}
 # 1Mb window for 1st SNP in hit.SNP
-unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[1]) <= 10^6 
-                  & rep.merged$pos != rep.hit.SNP$pos[1], "gene"])
+t(unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[1]) <= 10^6 
+                    & rep.merged$pos != rep.hit.SNP$pos[1], "gene"]))
 
 # 1Mb window for 2nd SNP in hit.SNP
-unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[2]) <= 10^6 
-                  & rep.merged$pos != rep.hit.SNP$pos[2], "gene"])
+t(unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[2]) <= 10^6 
+                        & rep.merged$pos != rep.hit.SNP$pos[2], "gene"]))
+
 ```
 
 \newpage
@@ -554,7 +574,7 @@ Use the logistic regression models fitted in problem 2.e to predict the outcome 
 
 ### Solution:
 
-We use pre-fitted logistic regression models of each score to predict the outcomes of patients in gdm.test.
+We use pre-fitted logistic regression models of each score to predict the outcomes of patients in gdm.test. Based on the predicted probabilities from each genetic risk score model, we calculate the log density of each observation in gdm.test, which follows a Bernoulli distribution, and obtain the test log-likelihood.
 
 ```{r}
 # use pre-fitted logistic regressions to predict
@@ -564,6 +584,19 @@ predict.test.p3.SNP <- predict(logreg.p3, newdata = gdm.test,
                                type = "response")
 predict.test.FTO.SNP <- predict(logreg.FTO, newdata = gdm.test, 
                                 type = "response")
+
+# test log-likelihood for predicted probabilities
+log.lld.test.hit <- sum(dbinom(gdm.test$pheno, size = 1, 
+                               prob = predict.test.hit.SNP, log = TRUE))
+log.lld.test.p3 <- sum(dbinom(gdm.test$pheno, size = 1, 
+                               prob = predict.test.p3.SNP, log = TRUE))
+log.lld.test.FTO <- sum(dbinom(gdm.test$pheno, size = 1, 
+                               prob = predict.test.FTO.SNP, log = TRUE))
+
+# report the test log-likelihood
+data.frame(score.model = c("score.hit", "score.p3", "score.FTO"),
+           test.log.likelihood = c(log.lld.test.hit, log.lld.test.p3, 
+                                   log.lld.test.FTO))
 ```
 
 \newpage
@@ -670,13 +703,17 @@ File nki.csv (available from the accompanying zip folder on Learn) contains data
 
 ### Problem 3.a (6 points)
 
-Compute the matrix of correlations between the gene expression variables, and display it so that a block structure is highlighted. Discuss what you observe. Write some code to identify the unique pairs of (distinct) variables that have correlation coefficient greater than 0.80 in absolute value and report their correlation coefficients.
+Compute the matrix of correlations between gene expression variables, and display it so that a block structure is highlighted. Discuss what you observe. Write some code to identify the unique pairs of (distinct) variables that have correlation coefficient greater than 0.80 in absolute value and report correlation coefficients.
 
 ### Solution:
 
 To compute the correlations between the gene expression variables, we first obtained a subset which only contains the gene expression variables and then computed the correlation matrix using `cor()` function. Moreover, we visualized the strength of correlation between the gene variables by creating a correlation plot.
 
 Since the number of gene expression variables is large (70 columns), we improved the default plot by using options including `order` and `type`.
+
+Looking at the correlation plot above, we can see that there are strong correlations between variables with similar names, such as "IGFBP5" and "IGFBP5.1". It is plausible to think that variables with similar names contains similar information and have similar effect on the outcome variable. Generally, high correlation between variables indicates high strength of linear association. On the other hand, we may also consider the existence of multicollinearity among variables with relatively high correlations.
+
+In particular, we found the unique pairs of distinct variables with correlation coefficients greater than 0.80 in absolute value and reported them in the following data frame. As we expected, high correlations appeared in variables with similar names as well as two other pairs corresponding to "PRC1".
 
 ```{r}
 # read data into R
@@ -699,9 +736,6 @@ corrplot(gene.expression.corr,
          type = "upper",                    # display the upper triangle only
          mar = c(0, 0, 1, 0))                       # set the size of margins
 ```
-Looking at the correlation plot above, we can see that there are strong correlations between variables with similar names, such as "IGFBP5" and "IGFBP5.1". It is plausible to think that variables with similar names contains similar information and have similar effect on the outcome variable. Generally, high correlation between variables indicates high strength of linear association. On the other hand, we may also consider the existence of multicollinearity among variables with relatively high correlations.
-
-In particular, we found the unique pairs of distinct variables with correlation coefficients greater than 0.80 in absolute value and reported them in the following data frame. As we expected, high correlations appeared in variables with similar names as well as two other pairs corresponding to "PRC1".
 
 ```{r}
 # find the unique pairs of distinct variables with correlation > 0.8
@@ -734,16 +768,30 @@ Run PCA (only over the columns containing gene expressions), in order to derive 
 
 Using `prcomp()` function, we applied PCA on the subset of gene expression variables and derived a patient-wise summary of all gene expression.
 
+The amount of variability explained by the components can be computed bearing in mind that the square root of the eigenvalues is stored in vector `sdev` of the PCA object. The variance explained by the principal components can be visualized through a scree plot.
+From the scree plot, we observe that, from the PC4, the variance explained by each principle component keeps at a relatively low level. Thus, we consider using the first $3$ principle components in further steps.
+
+We test the association between the outcome and each principle component by fitting a univariate logistic regression over the PC. According to the regression results, 
+
 ```{r}
 # run PCA 
 pca.patients <- prcomp(gene.expression, center = TRUE, scale = TRUE)
 summary(pca.patients)
 ```
-The amount of variability explained by the components can be computed bearing in mind that the square root of the eigenvalues is stored in vector `sdev` of the PCA object. The variance explained by the principal components can be visualized through a scree plot.
+
 ```{r}
 # the proportion explained by the first 3 PCs
 perc.expl <- pca.patients$sdev^2 / sum(pca.patients$sdev^2)
 sum(perc.expl[1:3])
+
+# cumulative proportion plot
+plot(summary(pca.patients)$importance[3, ], 
+     type = "line", main = "Cumulative proportion plot",
+     xlab = "Principal component", ylab = "Cumulative proportion")
+abline(h = 0.5, col = "blue", lty = 4)
+abline(v = 6, col = "blue", lty = 4)
+legend("bottomright", legend = c("cumulative proportion", "cut-off at 0.50"), 
+       col = c("black", "blue"), lty = c(1, 4))
 
 # scree plot 
 screeplot(pca.patients, main = "Scree plot")
@@ -814,18 +862,26 @@ Use plots to compare with the correlation structure observed in problem 2.a and 
 
 ### Solutions:
 
-```{r}
+```{r, warning = FALSE, fig.height = 10}
 # PC1 vs PC2
-fviz_pca_ind(pca.patients, geom = 'point', 
-             habillage = nki$Event, addEllipses = TRUE)
-fviz_pca_biplot(pca.patients, geom = 'point', repel = TRUE)
+plot1 <- fviz_pca_ind(pca.patients, geom = 'point', 
+                      habillage = nki$Event, addEllipses = TRUE)
+plot2 <- fviz_pca_biplot(pca.patients, geom = 'point', repel = TRUE)
 
 # PC2 vs PC3
-fviz_pca_ind(pca.patients, geom = 'point', axes = c(2, 3),
-             habillage = nki$Event, addEllipses = TRUE)
-fviz_pca_biplot(pca.patients, geom = 'point', axes = c(2, 3), repel = TRUE)
+plot3 <- fviz_pca_ind(pca.patients, geom = 'point', axes = c(2, 3),
+                      habillage = nki$Event, addEllipses = TRUE)
+plot4 <- fviz_pca_biplot(pca.patients, geom = 'point', axes = c(2, 3), 
+                         repel = TRUE)
 
+# PC1 vs PC3
+plot5 <- fviz_pca_ind(pca.patients, geom = 'point', axes = c(1, 3),
+                      habillage = nki$Event, addEllipses = TRUE)
+plot6 <- fviz_pca_biplot(pca.patients, geom = 'point', axes = c(1, 3), 
+                         repel = TRUE)
 
+grid.arrange(plot1, plot3, plot5)
+grid.arrange(plot2, plot4, plot6)
 ```
 
 \newpage
@@ -852,11 +908,11 @@ prepare.glmnet <- function(data, formula=~ .) {
 ```
 
 ```{r}
-# define x and y
+# define x and y matrices
 x.mat <- prepare.glmnet(nki, ~ . - Event)
 y.mat <- nki$Event
 
-# create training and testing sets
+# create training and testing matrices
 set.seed(984065)
 train.idx <- createDataPartition(y = nki$Event, p = 0.7)$Resample1
 train.x.mat <- x.mat[train.idx, ]
@@ -867,54 +923,112 @@ test.y.mat <- y.mat[-train.idx]
 
 ```{r, warning=FALSE}
 # Lasso regressions using CV
+set.seed(984065)
 fit.cv.Lasso <- cv.glmnet(train.x.mat, train.y.mat, 
                           family = "binomial", type.measure = "auc")
 fit.cv.Lasso.gene <- cv.glmnet(train.x.mat[, -c(1:6)], train.y.mat,
                                family = "binomial", type.measure = "auc")
 
-# AUCs with best lambda
+# AUCs with lambda.min
 Lasso.auc <- fit.cv.Lasso$cvm[fit.cv.Lasso$index[1]]
 Lasso.gene.auc <- fit.cv.Lasso.gene$cvm[fit.cv.Lasso.gene$index[1]]
-```
 
-```{r, warning=FALSE}
 # Ridge regression using CV
 fit.cv.Ridge <- cv.glmnet(train.x.mat, train.y.mat, alpha = 0,
                           family = "binomial", type.measure = "auc")
 fit.cv.Ridge.gene <- cv.glmnet(train.x.mat[, -c(1:6)], train.y.mat, alpha = 0,
                                family = "binomial", type.measure = "auc")
 
-# AUCs with best lambda
+# AUCs with lambda.min
 Ridge.auc <- fit.cv.Ridge$cvm[fit.cv.Ridge$index[1]]
 Ridge.gene.auc <- fit.cv.Ridge.gene$cvm[fit.cv.Ridge.gene$index[1]]
 ```
 
-```{r, warning=FALSE}
-# AUCs of Lasso and Ridge regressions on testing set
+```{r, warning = FALSE, error = FALSE, message = FALSE, fig.height = 3.5}
+# predictive values of Lasso and Ridge regressions on testing set
 pred.Lasso.test <- predict(fit.cv.Lasso, newx = test.x.mat, 
                            s = fit.cv.Lasso$lambda.min, type = "response")
 pred.Lasso.gene.test <- predict(fit.cv.Lasso.gene, newx = test.x.mat[, -c(1:6)], 
-                                s = fit.cv.Lasso$lambda.min, type = "response")
+                                s = fit.cv.Lasso.gene$lambda.min, type = "response")
 pred.Ridge.test <- predict(fit.cv.Ridge, newx = test.x.mat, 
                            s = fit.cv.Ridge$lambda.min, type = "response")
 pred.Ridge.gene.test <- predict(fit.cv.Ridge.gene, newx = test.x.mat[, -c(1:6)], 
-                                s = fit.cv.Ridge$lambda.min, type = "response")
+                                s = fit.cv.Ridge.gene$lambda.min, type = "response")
 
-Lasso.test.auc <- roc(test.y.mat ~ pred.Lasso.test)$auc
-Lasso.gene.test.auc <- roc(test.y.mat ~ pred.Lasso.gene.test)$auc
-Ridge.test.auc <- roc(test.y.mat ~ pred.Ridge.test)$auc
-Ridge.test.gene.auc <- roc(test.y.mat ~ pred.Ridge.gene.test)$auc
+# AUC and ROC curves
+invisible({capture.output({
+Lasso.test.auc <- roc(test.y.mat ~ pred.Lasso.test, 
+                      plot = TRUE, main = "ROC curves (on testing set)", 
+                      col = "red", xlim = c(0, 1))$auc
+Lasso.gene.test.auc <- roc(test.y.mat ~ pred.Lasso.gene.test,
+                           plot = TRUE, add = TRUE, col = "blue")$auc
+Ridge.test.auc <- roc(test.y.mat ~ pred.Ridge.test, 
+                      plot = TRUE, add = TRUE, col = "darkgreen")$auc
+Ridge.gene.test.auc <- roc(test.y.mat ~ pred.Ridge.gene.test,
+                           plot = TRUE, add = TRUE, col = "orange")$auc
+})})
+legend("bottomleft", legend = c("Lasso", "Lasso (gene only)", 
+                                "Ridge", "Ridge (gene only)"), 
+       col = c("red", "blue", "darkgreen", "orange"),
+       lwd = c(1, 1, 1, 1))
 
+# report the AUCs
 data.frame(train.AUC = c(Lasso.auc, Lasso.gene.auc, Ridge.auc, Ridge.gene.auc),
            modelsize = c(fit.cv.Lasso$nzero[fit.cv.Lasso$index[1]],
                          fit.cv.Lasso.gene$nzero[fit.cv.Lasso.gene$index[1]],
                          fit.cv.Ridge$nzero[fit.cv.Ridge$index[1]], 
                          fit.cv.Ridge.gene$nzero[fit.cv.Ridge.gene$index[1]]),
            test.AUC = c(Lasso.test.auc, Lasso.gene.test.auc,
-                        Ridge.test.auc, Ridge.test.gene.auc), 
+                        Ridge.test.auc, Ridge.gene.test.auc), 
            row.names = c("Lasso", "Lasso (gene only)", 
                          "Ridge", "Ridge (gene only)"))
 ```
 
+```{r, , warning = FALSE, error = FALSE, message = FALSE, fig.height = 3.5}
+# stepwise selection 
+# training and testing sets
+train.x <- nki[train.idx, -c(1)]
+test.x <- nki[-train.idx, -c(1)]
+train.y <- nki$Event[train.idx]
+test.y <- nki$Event[-train.idx]
+
+# define null and full models
+null.model <- glm(Event ~ 1, data = nki[train.idx, ], family = "binomial")
+full.model <- glm(Event ~ ., data = nki[train.idx, ], family = "binomial")
+
+# define stepwise selection models
+fit.B <- stepAIC(full.model, scope = list(lower = null.model), 
+                 direction = "backward", trace = FALSE)
+fit.S <- stepAIC(null.model, scope = list(upper = full.model), 
+                 direction = "forward", trace = FALSE)
+
+# apply stepwise models on testing set
+pred.B.test <- predict(fit.B, newdata = test.x, type = "response")
+pred.S.test <- predict(fit.S, newdata = test.x, type = "response")
+
+# AUCs of stepwise models on testing set
+invisible({capture.output({
+B.test.auc <- roc(test.y ~ pred.B.test, plot  = TRUE, 
+                  main = "ROC curves (on testing set)", 
+                  col = "red", xlim = c(0, 1))$auc
+S.test.auc <- roc(test.y ~ pred.S.test, plot = TRUE, 
+                  add = TRUE, col = "blue")$auc
+# add ROC curves for Lasso and Ridge regressions
+roc(test.y.mat ~ pred.Lasso.test, plot = TRUE, add = TRUE, col = "darkgreen")
+roc(test.y.mat ~ pred.Ridge.test, plot = TRUE, add = TRUE, col = "orange")
+})})
+legend("bottomleft", legend = c("Backward", "Forward", "Lasso", "Ridge"),
+      col = c("red", "blue", "darkgreen", "orange"), lwd = c(1, 1, 1, 1))
+
+# report the AUCs for testing set
+data.frame(modelsize = c(fit.cv.Lasso$nzero[fit.cv.Lasso$index[1]],
+                         fit.cv.Ridge$nzero[fit.cv.Ridge$index[1]], 
+                         length(fit.B$coefficients) - 1,
+                         length(fit.S$coefficients) - 1),
+           test.AUC = c(Lasso.test.auc, Ridge.test.auc, 
+                        B.test.auc, S.test.auc), 
+           row.names = c("Lasso", "Ridge", "Backward", "Forward"))
+
+```
 
 
