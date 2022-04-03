@@ -546,7 +546,6 @@ logreg.p3 <- glm(pheno ~ score.p3, data = gdm.dt.imputed, family = "binomial")
 logreg.FTO <- glm(pheno ~ score.FTO, data = gdm.dt.imputed, family = "binomial")
 
 # use a data frame to report
-invisible({capture.output({
 data.frame(name = c("score.hit", "socre.p3", "score.FTO"),
            OR = exp(c(summary(logreg.hit)$coefficients[2, 1], 
                       summary(logreg.p3)$coefficients[2, 1],
@@ -559,8 +558,7 @@ data.frame(name = c("score.hit", "socre.p3", "score.FTO"),
                             confint(logreg.FTO)[2, 2])),
            p.value = c(summary(logreg.hit)$coefficients[2, 4], 
                        summary(logreg.p3)$coefficients[2, 4],
-                        summary(logreg.FTO)$coefficients[2, 4]))
-})})
+                       summary(logreg.FTO)$coefficients[2, 4]))
 ```
 
 \newpage
