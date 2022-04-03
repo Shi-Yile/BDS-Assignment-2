@@ -51,7 +51,11 @@ We use package `caret` to create training and testing sets with a ratio of $7:3$
 
 After data pre-processing, we fit a Ridge regression and a Lasso regression which use cross-validation on the training data. To identify the optimal penalty parameter which maximises the AUC for each model, for each model, we make an auxiliary plot which display the AUC in red with bars corresponding to standard errors. The leftmost dotted line in each plot corresponds to the $\lambda$ that maximises AUC, i.e. `lambda_min` in the regression object. The right dotted line corresponds to the largest value of $\lambda$ such that the error is within one standard error from the minimum, i.e. `lambda_1se` in the fitted object.
 
-Finally, we report the optimal $\lambda$s which maximise the AUC for two models.
+Finally, we report the optimal $\lambda$s which maximise the AUC for two models: 
+\begin{itemize}
+  \item Lasso regression: $\lambda = 0.02982835$
+  \item Ridge regression: $\lambda = 0.03677378$
+\end{itemize}
 
 ```{r}
 # Read dataset into R
@@ -114,9 +118,10 @@ We construct a data frame to display the value of $\lambda$ in each model and co
 
 From the results, we draw the following conclusions:
 \begin{enumerate}
+  \item Low values of $\lambda$ except Ridge regression using \texttt{lambda\_1se} indicates the parameters do not get penalized hard.
   \item Both Lasso regression and Ridge regression using \texttt{lambda\_min} have higher AUC scores than corresponding models using \texttt{lambda\_1se}. This is reasonable as \texttt{lambda\_min} maximises the AUC.
-  \item Using same kind of penalty parameters, Lasso regression has smaller values for both $\lambda$ and AUC than Ridge regression. In terms of AUC, we may consider that Ridge regression with \texttt{lambda\_min} preforms best out of $4$ models.
-  \item The model sizes of Lasso regression models, $8$ and $6$, are significantly smaller than the model sizes of Ridge regression models, which keep constant at $30$. This is because for Ridge regression, all predictors become very soon non-zero, while for Lasso regression this happens in a staggered way.
+  \item Using same kind of penalty parameters, Lasso regression has smaller values for both $\lambda$ and AUC than Ridge regression. In terms of AUC, we may consider that Ridge regression with \texttt{lambda\_min} preforms best on the training set ($0.983$), out of $4$ models.
+  \item The model sizes of Lasso regression models, $8$ and $6$, are significantly smaller than the model sizes of Ridge regression models, which keep constant at $30$. This is because Ridge regression shrinks penalized coefficients near $0$ while Lasso regression shrinks them to $0$, based on the penalty parameter $\lambda$.
 \end{enumerate}
 
 ```{r}
@@ -209,7 +214,9 @@ Compare the goodness of fit of model B and model S in an appropriate way.
 
 Here we consider using AIC as an appropriate criterion to compare the goodness-of-fit to the training data of two models. As mentioned before, in general, model with lower AIC value has better performance. Thus, according to the following result, we consider the backward stepwise selection, i.e. model.B, performs better than the forward stepwise method.
 
-We also apply $\chi^2$ test to both methods to compare their significance. 
+We also apply $\chi^2$ test to both methods to compare their model significance to check our conclusions drawn from AIC values. As we expect, model.B has a lower $\chi^2$ statistics than model.S, indicating backward stepwise selection is more significant than forward stepwise selection, which is consistent with our previous conclusions.
+
+Note that if we look at the number of parameters in each model from 1.(c), we observe model.B has fewer parameters than model.S. With this in mind, we are more favour of backward stepwise selection as it is a more efficient model with fewer parameters but better performance.
 
 ```{r}
 data.frame(model.B = c(model.B$aic, 
@@ -220,7 +227,7 @@ data.frame(model.B = c(model.B$aic,
                        pchisq(model.S$null.deviance - model.S$deviance, 
                               df = model.S$df.null - model.S$df.residual, 
                               lower.tail = FALSE)),
-           row.names = c("AIC", "chisq test"))
+           row.names = c("AIC", "chisq"))
 ```
 
 \newpage
@@ -233,18 +240,17 @@ Compute the training AUC for model B and model S.
 
 To compute the training AUC for two stepwise models, we first obtain the predictive values of training set using model.B and model.S. With predictive values, we use `roc()` function from `pROC` package to calculate AUC of training set for model.B and model.S. 
 
-From the result, we can find that the AUC scores for both models are quite high and backward stepwise selection performs slightly better than forward stepwise method, which is consistent with the conclusion from previous question. 
+From the result, we can find that the AUC scores for both models are quite high as well as well performed ROC curves. Backward stepwise selection performs slightly better than forward stepwise method, which is consistent with the conclusions from previous question. 
 
 ```{r, warning = FALSE, error = FALSE, message = FALSE, fig.height = 3.5}
 # predict values on training set 
 pred.B <- predict(model.B, newdata = train.wdbc, type = "response")
 pred.S <- predict(model.S, newdata = train.wdbc, type = "response")
 
-# auc
+# AUC and ROC curves
 invisible({capture.output({
-auc.B <- roc(train.y.mat ~ pred.B, plot = TRUE, 
-             main = "ROC curves (on training set)", 
-             col = "red", xlim = c(0, 1))$auc
+auc.B <- roc(train.y.mat ~ pred.B, plot = TRUE, col = "red", xlim = c(0, 1),
+             main = "ROC curves (on training set)")$auc
 auc.S <- roc(train.y.mat ~ pred.S, plot = TRUE, add = TRUE, col = "blue")$auc
 legend("bottomleft", legend = c("Backward", "Forward"), 
        col = c("red", "blue"), lwd = c(1, 1), bty = "n")
@@ -262,7 +268,9 @@ Use the four models to predict the outcome for the observations in the test set 
 
 Similar with 1.e, to get the testing AUC of each model, we need to calculate the predictive values of testing set for each model. After that, again, we use `roc()` function to plot the testing ROC curves of each model in the same graph. Moreover, we report the testing AUC for each model.  
 
-According to the results, Lasso regression has higher testing AUC than its training AUC, while the other $3$ models has higher training AUCs than their testing AUCs. Moreover, basically stepwise models performs better on training set,  while penalised models have better performances on testing model. Note that we may not consider the problem of over-fitting for penalised models as the idea of regularization reduces over-fitting. However, we possibly consider over-fitting happens to stepwise models.
+Looking at the ROC curves on testing set, we consider good performances of $4$ models with AUCs over $0.95$. Specifically, Lasso regression has higher testing AUC than its training AUC, while the other $3$ models has higher training AUCs than their testing AUCs. Moreover, basically stepwise models performs better on training set, while penalised models have better performances on testing model. Note that we may not consider the problem of over-fitting for penalised models as the idea of regularization reduces over-fitting. However, we possibly consider over-fitting happens to stepwise models.
+
+In conclusion, we consider Lasso regression as the best model among $4$ mentioned models.
 
 ```{r, , warning = FALSE, error = FALSE, message = FALSE, fig.height = 3.5}
 # predict values of testing set
@@ -390,9 +398,9 @@ Using function univ.glm.test(), run an association study for all the SNPs in gdm
 
 With pre-defined function `univ.glm.test()`, we run logistic regression over each SNP in gdm.dt (imputed) separately and obtained the result data table, rep. To ensure the consistence of the order of SNPs between rep and original dataset, we set the `order` option to "FALSE" as default.
 
-As required, we find the SNP with the smallest regression p-value, i.e. $rs12243326\_A$, which is considered to be mostly strongly associated to increased risk of gestational diabetes. Besides statistics in rep, we also report its 95% and 99% confidence intervals.
+As required, we find the SNP with the smallest regression p-value, i.e. $rs12243326\_A$, which is considered to be mostly strongly associated to increased risk of gestational diabetes. Besides statistics in `rep`, we also report its 95% and 99% confidence intervals. Since the confidence intervals do not include $1$, we have sufficient evidence to conclude that $rs12243326\_A$ is strongly associated with the outcome of interest, consistent with our previous conclusion.
 
-In addition, we report statistics including 95% and 99% confidence intervals for the SNP with most significant protective effect on gestational diabetes, i.e. $rs11575839\_C$, which has the most negative regression coefficient.
+In addition, we report statistics including 95% and 99% confidence intervals for the SNP with most significant protective effect on gestational diabetes, i.e. $rs11575839\_C$, which has the most negative regression coefficient. Note that the confidence intervals include $1$, which suggests insignificance of $rs11575839\_C$, consistent with its large p-value of $0.1090394$.
 
 ```{r}
 # apply pre-defined function to the imputed dataset
@@ -435,9 +443,16 @@ Merge your GWAS results with the table of gene names provided in file GDM.annot.
 
 ### Solution:
 
-Since SNP names in rep, i.e. `name` terms, consist of the official identifiers of SNPs and the reference alleles, we need to split `name` into `snp` and `allele`. Then we merge two dataset by mutual column `snp`. After merging, we report the SNP name, effect allele, chromosome number and corresponding gene name of 'hit SNPs', $rs12243326$ and $rs2237897$, whose p-values $< 1e-4$.
+Since SNP names in rep, i.e. `name` terms, consist of the official identifiers of SNPs and the reference alleles, we need to split `name` into `snp` and `allele`. Then we merge two dataset by mutual column `snp`.
 
-Moreover, for each 'hit SNP', we report the gene names that are within a 1Mb window from the SNP position on the chromosome. 
+After merging, we report the 'hit SNPs' (p-value $< 1e-4$) $rs12243326$ and $rs2237897$, with effect allele of $A$ and $T$, chromosome number of $10$ and $11$ and gene name of $TCF7L2$ and $KCNQ1$ respectively. We also make an auxiliary Manhattan plot to confirm the 'hit.SNPs' we found.
+
+Moreover, for each 'hit SNP', we report the gene names that are within a 1Mb window from the SNP position on the chromosome:
+\begin{itemize}
+  \item \texttt{rs12243326}: $TCF7L2$
+  \item \texttt{rs2237897}: $TH$, $KCNQ1$, $ACNA2D4$, $SMG6$
+\end{itemize}
+People with these genes are more likely to be diagnosed with malignant tumour.
 
 ```{r}
 # read dataset into R
@@ -459,15 +474,27 @@ idx.hit.SNP <- which(rep.merged$p.value < 1e-4)
 rep.hit.SNP = rep.merged[idx.hit.SNP, ]
 rep.hit.SNP[, .(snp, allele, chrom, gene)]
 ```
+```{r}
+# manhattan plot
+rep.merged$pos <- as.numeric(rep.merged$pos)
+rep.merged$cum.pos <- cumsum(rep.merged$pos)
+rep.merged$chrom <- as.numeric(rep.merged$chrom)
+
+chrom.cols <- 1 + rep.merged$chrom %% 2 
+with(rep.merged, plot(cum.pos, -log10(p.value), 
+                      col = chrom.cols, pch = 19, cex = 0.6,
+                      main = "Manhattan plot", xlab = "Positions"))
+abline(h = -log10(1e-4), lty = 2, col = "red")
+```
 
 ```{r}
 # 1Mb window for 1st SNP in hit.SNP
-t(unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[1]) <= 10^6 
-                    & rep.merged$pos != rep.hit.SNP$pos[1], "gene"]))
+unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[1]) <= 10^6 
+                    & rep.merged$pos != rep.hit.SNP$pos[1], "gene"])
 
 # 1Mb window for 2nd SNP in hit.SNP
-t(unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[2]) <= 10^6 
-                        & rep.merged$pos != rep.hit.SNP$pos[2], "gene"]))
+unique(rep.merged[abs(rep.merged$pos - rep.hit.SNP$pos[2]) <= 10^6 
+                        & rep.merged$pos != rep.hit.SNP$pos[2], "gene"])
 
 ```
 
@@ -483,7 +510,7 @@ Generally, we construct a weighted genetic risk score for SNPs by their regressi
 
 Once we obtain the scores, we add them as new columns into dataset and apply logistic regression to them in separate. We report the odds ratio, 95% confidence interval and p-value of each score. 
 
-Looking the results, from the p-values, we consider the risk scores for both SNPs with p-values $< 1e-4$ and SNPs with p-values $< 1e-3$ have significant associations with gestational diabetes as p-values for two scores are relatively low. However, for SNPs on the FTO genes, the corresponding score has a p-value $> 0.05$, implying an insignificant contribution to the gestational diabetes.
+Looking the results, from the p-values, we consider the risk scores for both SNPs with p-values $< 1e-4$ and SNPs with p-values $< 1e-3$ have significant associations with gestational diabetes as p-values for two scores are relatively low with confidence intervals excluding $1$. However, for SNPs on the FTO genes, the corresponding score has a p-value $> 0.05$ and its confidence interval covers $1$, implying an insignificant contribution to the gestational diabetes. 
 
 ```{r}
 # subset of SNPs with p-value < 1e-4
@@ -512,13 +539,14 @@ gdm.dt.imputed$score.p3 <- score.p3.SNP
 gdm.dt.imputed$score.FTO <- score.FTO.SNP
 ```
 
-```{r}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 # univariate logistic regressions
 logreg.hit <- glm(pheno ~ score.hit, data = gdm.dt.imputed, family = "binomial")
 logreg.p3 <- glm(pheno ~ score.p3, data = gdm.dt.imputed, family = "binomial")
 logreg.FTO <- glm(pheno ~ score.FTO, data = gdm.dt.imputed, family = "binomial")
 
 # use a data frame to report
+invisible({capture.output({
 data.frame(name = c("score.hit", "socre.p3", "score.FTO"),
            OR = exp(c(summary(logreg.hit)$coefficients[2, 1], 
                       summary(logreg.p3)$coefficients[2, 1],
@@ -532,6 +560,7 @@ data.frame(name = c("score.hit", "socre.p3", "score.FTO"),
            p.value = c(summary(logreg.hit)$coefficients[2, 4], 
                        summary(logreg.p3)$coefficients[2, 4],
                         summary(logreg.FTO)$coefficients[2, 4]))
+})})
 ```
 
 \newpage
@@ -607,6 +636,8 @@ File GDM.study2.txt (available from the accompanying zip folder on Learn) contai
 
 ### Solutions:
 
+When genome-wide association studies of the same phenotype are performed in multiple independent studies, it is common to merge the results by performing a meta-analysis. This has the benefit of increasing the statistical power and reducing false-positive findings (type I error rate). 
+
 To preform the meta-analysis, we need to harmonize two datasets. Thus, we take out a subset of rep which only contains columns in gdm.study2, i.e. `snp`, `allele`, `coef` and `se`. Moreover, we rename some columns with the corresponding column names in gdm.study2. After that, we also ensure SNPs in two datasets correspond and order them by SNP and effect allele as SNP and effect allele are what matter in the meta-analysis.
 
 We start with finding which SNPs have both alleles matching, and which would match if the alleles were flipped. The following result indicates that in this case, there are two SNPs whose alleles do not match even after swapping them. This could be caused by a gene-typing or imputation error, or because of some other discrepancy in the GWAS pipelines adopted by
@@ -617,6 +648,8 @@ The effect sizes of the SNPs which we identified to have alleles flipped need to
 Now, with data pre-processing ready, we perform a fixed effect meta-analysis by using inverse variance weighting. According to the weights, we may consider that in general results from 2.c are more powered. 
 
 Moreover, we derive the meta-analysis effect size which is a weighted sum of effect sizes from two studies, based on weights obtained before. Finally, we compute the p-values for the meta-analysis and construct a meta-analysis summary for SNP terms with meta-analysis p-value $< 1e-4$, increasingly ordered by p-values.
+
+By combining two studies together, we increase the statistical power of the study. We observe this improvement by plotting the meta-analysis p-values over the p-values from `rep` dataset, where most data points are left skewed. 
 
 ```{r}
 # read data into R
@@ -695,6 +728,16 @@ summary.p4.meta <- summary.p4.meta[order(p.value.meta)]
 summary.p4.meta
 ```
 
+```{r, fig.height = 3.5}
+# additional check on meta-analysis if it improves the statistical power
+plot(-log10(rep[-idx.nomatching]$p.value), -log10(p.value.meta), 
+     xlim = c(0, 8), ylim = c(0, 16), 
+     xlab = "p-values from report in 2.c", 
+     ylab = "p-values from meta-analysis"
+     )
+```
+
+
 \newpage
 
 ## Problem 3 (33 points)
@@ -754,7 +797,6 @@ for (i in 2:ncol(gene.expression.corr)){
     }
   }
 }
-
 corr.08
 ```
 
@@ -768,10 +810,22 @@ Run PCA (only over the columns containing gene expressions), in order to derive 
 
 Using `prcomp()` function, we applied PCA on the subset of gene expression variables and derived a patient-wise summary of all gene expression.
 
-The amount of variability explained by the components can be computed bearing in mind that the square root of the eigenvalues is stored in vector `sdev` of the PCA object. The variance explained by the principal components can be visualized through a scree plot.
-From the scree plot, we observe that, from the PC4, the variance explained by each principle component keeps at a relatively low level. Thus, we consider using the first $3$ principle components in further steps.
+The amount of variability explained by the components can be computed bearing in mind that the square root of the eigenvalues is stored in vector `sdev` of the PCA object. The variance explained by the principal components can be visualized through a scree plot. From the scree plot, we observe that, from the PC4, the variance explained by each principle component keeps at a relatively low level. 
 
-We test the association between the outcome and each principle component by fitting a univariate logistic regression over the PC. According to the regression results, 
+Furthermore, we construct a plot to show the cumulative proportion of the variance explained by principle components. In this plot, we also highlight the positions where the cumulative proportion is over $50\%$ and $90\%$, i.e. $n=6$ and $n=33$. In general, to have better model accuracy, we usually extract the first $n$ principle components so that their cumulative proportion of variance is at least $80\%$. However, in this case, the first $22$ principle components are required, which is a large number resulting in a complex model.
+
+Thus, for both model accuracy and conciseness, we consider using the first $3$ principle components in further steps, though they only explain $37.7\%$ of variance.
+
+We test the association between the outcome and each principle component by fitting an unadjusted univariate logistic regression over the PC as well as a logistic regression adjusted by `Age`, `EstrogenReceptor` and `Grade`. According to the p-values from regression results, we find:
+\begin{itemize}
+  \item PC2 is insignificant for both unadjusted and adjusted models 
+  \item The first principle component is significant in unadjusted model, while it becomes insignificant after adjusting on the aforementioned variables. 
+  \item Principle component $3$ keeps its significance in both models.
+\end{itemize}
+
+Besides, we fit a logistic regression over $3$ principle components by adjusting them for `Age`, `EstrogenReceptor` and `Grade`. We obtain a poor model performance where the third principle component is the only significant variable with $\alpha = 0.05$.
+
+All in all, we do not think applying PCA is a good choice for our data as the percentage of variance explained by each principle component is not large. Moreover, the regression results which the first two are not significant adjusting for `Age`, `EstrogenReceptor` and `Grade` also suggest poor model performance of PCA. We will consider other models including penalized models and stepwise selections to fit the data in further steps.
 
 ```{r}
 # run PCA 
@@ -779,7 +833,7 @@ pca.patients <- prcomp(gene.expression, center = TRUE, scale = TRUE)
 summary(pca.patients)
 ```
 
-```{r}
+```{r, fig.height = 3.5}
 # the proportion explained by the first 3 PCs
 perc.expl <- pca.patients$sdev^2 / sum(pca.patients$sdev^2)
 sum(perc.expl[1:3])
@@ -789,9 +843,11 @@ plot(summary(pca.patients)$importance[3, ],
      type = "line", main = "Cumulative proportion plot",
      xlab = "Principal component", ylab = "Cumulative proportion")
 abline(h = 0.5, col = "blue", lty = 4)
+abline(h = 0.9, col = "red", lty = 4)
 abline(v = 6, col = "blue", lty = 4)
-legend("bottomright", legend = c("cumulative proportion", "cut-off at 0.50"), 
-       col = c("black", "blue"), lty = c(1, 4))
+abline(v = 33, col = "red", lty = 4)
+legend("bottomright", 
+       legend = c("cumulative proportion", "cut-off at 0.5", "cut-off at 0.9"),        col = c("black", "blue", "red"), lty = c(1, 4, 4))
 
 # scree plot 
 screeplot(pca.patients, main = "Scree plot")
@@ -862,25 +918,48 @@ Use plots to compare with the correlation structure observed in problem 2.a and 
 
 ### Solutions:
 
-```{r, warning = FALSE, fig.height = 10}
+We visualize the first $3$ principle components using `fviz_pca_ind()` and `fviz_pca_biplot()` functions in `factoextra` package.  
+
+We start with analysing the results from individual scatter plots. The data points in these plots are the individual counties. They are artificially grouped and coloured by quartile. The x-axis in the first plot is the first principle component and the value between brackets is the proportion of the variance it explains. The y-axis in the first plot is the second component and in the second graph the counties are projected on the plane formed by the second and third components. Same applies for the third plot. 
+
+Looking at all plots we can see that the ellipses overlap. To overcome this we could just look at the largest and lowest quartiles. Furthermore, each component simply describes the variation of the dataset. A dataset which contains a few variables that are associated with the outcome and a lot more variables that aren’t won’t be very good at separating individual observations of the outcome. This isn’t entirely the case with our dataset as while the ellipses overlap for the first two principal components and first and third principal components show that they do separate slightly in the right order along the x and y axes. 
+
+Looking in closely, centroids are separated in the right order along the x-axis for the first principal component and marginally so along the y-axis for the second principal component. However, in the second graph the ellipses completely overlap. Removing a few variables which weren’t associated with our outcome of interest in the correlation matrix can probably improve this matter. Finally, first and second components and first and third components contain the large variation in our data it is therefore a good idea to examine the subset of most extreme values for the first two components as they are likely to contain outliers.
+
+Biplot is a visual representation of the linear composition of the components. The dots are the same data points then in the previous graph but without colour and each arrow represents the direction of each variable in the the 2D plane of the two components. Here we make $3$ biplots for each two $2$ of the first $3$ principle components.
+
+For the first component we would look at the variables with greatest magnitude along the x-axis in the first biplot, i.e. furthest to the left and furthest to the right. In this case, first component mainly assigns large positive values to `MELK` and `RFC4`, and large negative values to `STK32B`, `SCUBE2` and `TGFB3`. 
+
+For the second component we look at the variables with the greatest magnitude along the y-axis in the first biplot, i.e. the highest and lowest variables. Here, for this component we observe that `SLC2A3`, `COL4A2`, `PECI` and `PECI.1` carry the most weight. 
+
+For the third component we look at the variables with the greatest magnitude along the y-axis in the second biplot, i.e. the highest and lowest variables. `IGFBP5`, `IGFBP5.1`, `OXCT1` and `GPR180` are observed to carry the most weight for this component.
+
+The results from different biplots are consistent with each other. They roughly follow the blocks that we observed in the correlation plot which isn’t surprising given that the components are the eigenvectors of the variance-covariance matrix of the the predictor variables. We also observe genes with similar names always have similar directions and weights, which agrees with our findings from yje correlation plot in 3.c. 
+
+```{r, warning = FALSE, fig.height = 9}
+# individual scatter plots
 # PC1 vs PC2
 plot1 <- fviz_pca_ind(pca.patients, geom = 'point', 
                       habillage = nki$Event, addEllipses = TRUE)
-plot2 <- fviz_pca_biplot(pca.patients, geom = 'point', repel = TRUE)
-
 # PC2 vs PC3
 plot3 <- fviz_pca_ind(pca.patients, geom = 'point', axes = c(2, 3),
                       habillage = nki$Event, addEllipses = TRUE)
-plot4 <- fviz_pca_biplot(pca.patients, geom = 'point', axes = c(2, 3), 
-                         repel = TRUE)
-
 # PC1 vs PC3
 plot5 <- fviz_pca_ind(pca.patients, geom = 'point', axes = c(1, 3),
                       habillage = nki$Event, addEllipses = TRUE)
+
+grid.arrange(plot1, plot3, plot5)
+
+# biplots
+# PC1 vs PC2
+plot2 <- fviz_pca_biplot(pca.patients, geom = 'point', repel = TRUE)
+# PC2 vs PC3
+plot4 <- fviz_pca_biplot(pca.patients, geom = 'point', axes = c(2, 3), 
+                         repel = TRUE)
+# PC1 vs PC3
 plot6 <- fviz_pca_biplot(pca.patients, geom = 'point', axes = c(1, 3), 
                          repel = TRUE)
 
-grid.arrange(plot1, plot3, plot5)
 grid.arrange(plot2, plot4, plot6)
 ```
 
@@ -891,6 +970,20 @@ grid.arrange(plot2, plot4, plot6)
 Based on the models we examined in the labs, fit an appropriate model with the aim to provide the most accurate prognosis you can for patients. Discuss and justify your decisions.
 
 ### Solution:
+
+As mentioned in 3.b, PCA, with its poor model performance, is not an appropriate method for our data. Thus, in this part, we tend to apply different methods to fit a well-performed model which can provide the most accurate prognosis. The candidate methods are `Lasso regression`, `Ridge Regression`, `Backward stepwise selection` and `Forward stepwise selection`. Moreover, for Lasso regression and Ridge regression, we test two independent variable sets to determine if we should use gene expression variables only ($4$ models in total).
+
+We start with Lasso regression and Ridge regression on two variables sets. Since there are factors in the independent variable set, we define and apply a helper function `prepare.gllmnet()` (from Lab 4) to covert the corresponding data table to a matrix. 
+
+Next, as what we did in Problem 1, we use `createDataPartion()` function to split the training and testing sets with a ratio of $7:3$. After that, we run Lasso and Ridge regressions using cross-validation over all independent variables and gene expression variables only. To compare the model performances, we get the maximised AUC of each model with the optimal $\lambda$. 
+
+Furthermore, we also compute the AUC scores of $4$ regression models and plot ROC curves in the same graph, using `roc()` function. From both data frame of AUCs and the plot, we observe the performances of different model vary dramatically, where the Ridge regression over all variables beats other competitors. On the other hand, looking at Ridge regression over different variable sets, we conclude that it is better to take all variables into consideration rather than gene expression only, in terms of AUC.
+
+Note that for Lasso regression over gene expression variables only, though it has the largest AUC on training set ($0.786$ in $3$ decimal places), it obtains the lowest AUC on testing set, indicating the problem of over-fitting. As a result, we reject this model.
+
+We repeat the same steps using stepwise selection models and compare their performances on testing set with penalized models using AUC and ROC curves. According to the results, both stepwise selection models have lower AUCs, implying worse model accuracy. Another problem of stepwise selection is the convergence of it doesn't meet during iterations.
+
+In conclusion, we pick up \textbf{Ridge regression over all variables} as the most accurate model with respect to AUC score.
 
 ```{r}
 # helper function in Lab4
